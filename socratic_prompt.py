@@ -50,6 +50,7 @@ def build_system_prompt(
     subject: str,
     understanding_score: int,
     wrong_answer_count: int,
+    emotion: str = "neutral",
 ) -> str:
     """
     Build the LLM system prompt dynamically based on:
@@ -57,11 +58,12 @@ def build_system_prompt(
     - subject: detected academic domain
     - understanding_score: current comprehension meter value (0-100)
     - wrong_answer_count: consecutive incorrect answers (triggers hint escalation)
+    - emotion: detected facial expression of the student
     """
     lang_name = language  # e.g. "Hindi", "English"
 
     # Hint escalation logic
-    if wrong_answer_count >= config.HINT_THRESHOLD:
+    if wrong_answer_count >= config.HINT_THRESHOLD or emotion in ["sad", "angry", "fear"]:
         mode = "hint"
     elif understanding_score < 30:
         mode = "scaffolded"    # very basic, lots of encouragement
@@ -72,9 +74,10 @@ def build_system_prompt(
 
     mode_instructions = {
         "scaffolded": (
-            "The student is a beginner and needs a lot of support. "
-            "Break every concept into the simplest possible steps. "
-            "Ask only ONE very simple question at a time. Use warm, encouraging language."
+            "The student is a beginner and is struggling. "
+            "IMPORTANT: If they are confused, first provide a brief, simple explanation "
+            "of the core concept they are stuck on. Break the concept into the simplest possible steps. "
+            "After explaining, ask ONE very simple follow-up question. Use warm, highly encouraging language."
         ),
         "socratic": (
             "Use the Socratic Method strictly: NEVER give direct answers. "
@@ -87,30 +90,34 @@ def build_system_prompt(
             "Still do NOT reveal final answers directly."
         ),
         "hint": (
-            "The student has struggled. Give a gentle, partial hint — not the full answer — "
-            "that removes one layer of confusion. Then ask a simpler follow-up question."
+            "The student has struggled or looks frustrated. "
+            "IMPORTANT: Provide a brief, clear explanation to gently clarify their confusion, "
+            "but do not solve the entire problem. Once they understand that small piece, "
+            "ask a simpler follow-up question to ensure they got it."
         ),
     }
 
     prompt = f"""You are Vani, an empathetic offline AI tutor specializing in {subject}.
-Your sole purpose is to guide students using the Socratic Method.
+Your sole purpose is to guide students to understand concepts.
 
 LANGUAGE RULE: Always respond ONLY in {lang_name}. 
 If the student writes in any other language, still reply in {lang_name}.
 
 BEHAVIOR RULES:
-1. NEVER give the final answer directly.
-2. Ask exactly ONE guiding question per response.
-3. Acknowledge what the student said before asking your question.
-4. Use simple vocabulary appropriate for a school student.
-5. Keep responses under 80 words.
-6. End every response with a question mark (?).
+1. If the student is struggling or confused (in hint/scaffolded mode), provide a brief explanation FIRST, then ask a simple follow-up question.
+2. In regular Socratic mode, never give the final answer directly.
+3. CRITICAL: Ask EXACTLY ONE single guiding/follow-up question per response. DO NOT ask multiple questions in a row.
+4. Acknowledge what the student said before providing explanations or asking your question.
+5. Use simple vocabulary appropriate for a school student.
+6. CRITICAL: Keep your responses extremely short, UNDER 50 words. Do not write long paragraphs.
+7. End every response with a single question mark (?).
 
 CURRENT TEACHING MODE: {mode.upper()}
 {mode_instructions[mode]}
 
 SUBJECT: {subject.capitalize()}
 STUDENT COMPREHENSION: {understanding_score}%
+STUDENT EMOTION: {emotion} (Adjust your tone accordingly)
 """
     return prompt
 

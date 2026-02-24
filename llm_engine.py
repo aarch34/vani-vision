@@ -1,83 +1,52 @@
 """
-llm_engine.py - Phi-3 Mini (quantized GGUF) inference engine for Vani-Vision.
+llm_engine.py - Ollama inference engine for Vani-Vision.
 
-Uses llama-cpp-python for 100% offline CPU-based inference.
-Place the model at:  models/phi-3-mini-4k-instruct-q4.gguf
-Download from: https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf
+Uses the local Ollama service for 100% offline inference.
+Make sure Ollama is installed and running, and the 'phi3' model is pulled:
+    ollama pull phi3
 """
 
 import os
+import requests
 from loguru import logger
-
-try:
-    from llama_cpp import Llama
-    LLAMA_AVAILABLE = True
-except ImportError:
-    LLAMA_AVAILABLE = False
-    logger.warning("llama-cpp-python not installed. Running in demo-stub mode.")
 
 import config
 
-_llm_instance = None
+OLLAMA_URL = "http://localhost:11434/api/chat"
+OLLAMA_MODEL = getattr(config, "OLLAMA_MODEL", "phi3")
 
-# ChatML tokens built via concatenation to avoid XML parser conflicts
-_SYS   = "<|" + "system|>"
-_USER  = "<|" + "user|>"
-_ASST  = "<|" + "assistant|>"
-_END   = "<|" + "end|>"
-
-
-def _get_llm():
-    global _llm_instance
-    if _llm_instance is not None:
-        return _llm_instance
-
-    if not LLAMA_AVAILABLE:
-        raise RuntimeError(
-            "llama-cpp-python is not installed.\n"
-            "Run: pip install llama-cpp-python"
-        )
-
-    model_path = config.LLM_MODEL_PATH
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(
-            f"Model not found at: {model_path}\n"
-            "Download Phi-3 Mini Q4 GGUF from:\n"
-            "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf\n"
-            f"and place it at: {os.path.abspath(model_path)}"
-        )
-
-    logger.info(f"Loading LLM: {model_path}  (threads={config.LLM_N_THREADS})")
-    _llm_instance = Llama(
-        model_path=model_path,
-        n_ctx=config.LLM_CONTEXT_LEN,
-        n_threads=config.LLM_N_THREADS,
-        n_gpu_layers=config.LLM_N_GPU_LAYERS,
-        verbose=False,
-    )
-    logger.info("LLM ready.")
-    return _llm_instance
+def _check_ollama():
+    try:
+        response = requests.get("http://localhost:11434/")
+        return response.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
 
 
-def build_prompt(system_message: str, history: list, user_message: str) -> str:
+def build_messages(system_message: str, history: list, user_message: str) -> list:
     """
-    Build a Phi-3 ChatML prompt string from system prompt + conversation history.
+    Format the conversation history into Ollama's expected message structure.
     history: list of {"role": "user"|"assistant", "content": "..."} dicts.
     """
-    role_map = {"user": _USER, "assistant": _ASST}
-    parts = [f"{_SYS}\n{system_message}{_END}"]
+    messages = [{"role": "system", "content": system_message}]
+    
+    # Add history
     for turn in history:
-        tag = role_map.get(turn["role"], _USER)
-        parts.append(f"{tag}\n{turn['content']}{_END}")
-    parts.append(f"{_USER}\n{user_message}{_END}")
-    parts.append(_ASST)          # model continues from here
-    return "\n".join(parts)
+        messages.append({
+            "role": turn.get("role", "user"),
+            "content": turn.get("content", "")
+        })
+        
+    # Add current user message
+    messages.append({"role": "user", "content": user_message})
+    
+    return messages
 
 
 def generate(system_message: str, history: list, user_message: str) -> str:
     """
-    Generate an LLM response. Falls back to canned demo responses when the
-    real model is unavailable (for demo / CI purposes).
+    Generate an LLM response via Ollama. Falls back to canned demo responses 
+    if Ollama is not running.
 
     Args:
         system_message: The Socratic persona / language instructions.
@@ -87,23 +56,34 @@ def generate(system_message: str, history: list, user_message: str) -> str:
     Returns:
         The assistant reply as a plain string.
     """
-    if not LLAMA_AVAILABLE or not os.path.exists(config.LLM_MODEL_PATH):
+    if not _check_ollama():
+        logger.warning("Ollama is not responding at localhost:11434. Falling back to demo mode.")
         return _demo_response(user_message)
 
-    prompt = build_prompt(system_message, history, user_message)
-    llm    = _get_llm()
+    messages = build_messages(system_message, history, user_message)
 
-    logger.debug("Sending prompt to LLM…")
-    output = llm(
-        prompt,
-        max_tokens=config.LLM_MAX_TOKENS,
-        temperature=config.LLM_TEMPERATURE,
-        stop=[_END, _USER, _SYS],
-        echo=False,
-    )
-    reply = output["choices"][0]["text"].strip()
-    logger.debug(f"LLM reply ({len(reply)} chars): {reply[:100]}")
-    return reply
+    logger.debug(f"Sending prompt to Ollama ({OLLAMA_MODEL})…")
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": config.LLM_TEMPERATURE,
+            "num_predict": config.LLM_MAX_TOKENS,
+        }
+    }
+
+    try:
+        response = requests.post(OLLAMA_URL, json=payload, timeout=60)
+        response.raise_for_status()
+        reply = response.json().get("message", {}).get("content", "").strip()
+        
+        logger.debug(f"Ollama reply ({len(reply)} chars): {reply[:100]}...")
+        return reply
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ollama API error: {e}")
+        return _demo_response(user_message)
 
 
 # ─── Demo-Mode Stub Responses ─────────────────────────────────────────────────

@@ -41,15 +41,38 @@ def check_package(pkg_import, pip_name, critical=True):
 
 def check_model():
     import config
-    path = config.LLM_MODEL_PATH
-    if os.path.exists(path):
-        size_mb = os.path.getsize(path) / (1024 * 1024)
-        ok(f"Model found: {path}  ({size_mb:.0f} MB)")
-    else:
+    import requests
+    
+    ollama_url = "http://localhost:11434/api/tags"
+    model_name = getattr(config, "OLLAMA_MODEL", "phi3")
+    
+    try:
+        response = requests.get(ollama_url, timeout=5)
+        if response.status_code == 200:
+            models = response.json().get("models", [])
+            model_tags = [m.get("name") for m in models]
+            
+            # Simple check: 'phi3' or 'phi3:latest'
+            found = False
+            for tag in model_tags:
+                if tag.startswith(model_name):
+                    found = True
+                    break
+                    
+            if found:
+                ok(f"Ollama running & model '{model_name}' found.")
+            else:
+                warn(
+                    f"Ollama running, but model '{model_name}' NOT found.\n"
+                    f"         Run: ollama pull {model_name}"
+                )
+        else:
+            warn(f"Ollama returned HTTP {response.status_code}")
+    except requests.exceptions.RequestException:
         warn(
-            f"Model NOT found at: {path}\n"
+            f"Ollama is NOT running or not installed at localhost:11434.\n"
             "         The app will run in demo mode (canned responses).\n"
-            "         Download from: https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf"
+            "         Install from: https://ollama.com/"
         )
 
 def check_webcam():
@@ -79,11 +102,10 @@ if __name__ == "__main__":
     check_package("loguru",             "loguru")
 
     print(f"\n{BOLD}OCR engine:{RESET}")
-    check_package("paddleocr",          "paddleocr",       critical=False)
-    check_package("paddle",             "paddlepaddle",    critical=False)
+    check_package("easyocr",            "easyocr",         critical=False)
 
-    print(f"\n{BOLD}LLM inference:{RESET}")
-    check_package("llama_cpp",          "llama-cpp-python", critical=False)
+    print(f"\n{BOLD}LLM inference (Ollama):{RESET}")
+    check_package("requests",           "requests",        critical=True)
 
     print(f"\n{BOLD}Translation:{RESET}")
     check_package("deep_translator",    "deep-translator", critical=False)

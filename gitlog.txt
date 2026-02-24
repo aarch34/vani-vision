@@ -1,0 +1,5 @@
+﻿dff50dc Add offline TTS, MJPEG streaming, strict meter scoring, strict LLM prompts
+d8149ea almost complete app
+ec8a123 app
+5749cd6 finally the app works
+cf79c4a initial commit

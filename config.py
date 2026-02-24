@@ -19,13 +19,11 @@ SUPPORTED_LANGUAGES = {
 DEFAULT_LANGUAGE = "English"
 
 # ─── LLM Settings ────────────────────────────────────────────────────────────
-# Download Phi-3 Mini GGUF from HuggingFace and place in models/
-LLM_MODEL_PATH   = "models/phi-3-mini-4k-instruct-q4.gguf"
+# Name of the model pulled into Ollama (e.g., 'phi3', 'llama3')
+OLLAMA_MODEL     = "phi3"
 LLM_CONTEXT_LEN  = 4096
 LLM_MAX_TOKENS   = 512
 LLM_TEMPERATURE  = 0.7
-LLM_N_THREADS    = 4   # tune to CPU core count
-LLM_N_GPU_LAYERS = 0   # 0 = pure CPU
 
 # ─── OCR Settings ─────────────────────────────────────────────────────────────
 OCR_LANGUAGE = "en"        # PaddleOCR language code

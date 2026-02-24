@@ -1,10 +1,10 @@
 """
-ocr_engine.py – Webcam capture + PaddleOCR text extraction for Vāṇī-Vision.
+ocr_engine.py – Webcam capture + EasyOCR text extraction for Vāṇī-Vision.
 
 Flow:
   1. Capture a frame from webcam (or accept an uploaded image).
   2. Pre-process the image (grayscale, denoise, threshold).
-  3. Run PaddleOCR to extract text lines with confidence scores.
+  3. Run EasyOCR to extract text lines with confidence scores.
   4. Return cleaned text string ready for the LLM pipeline.
 """
 
@@ -14,11 +14,11 @@ from PIL import Image
 from loguru import logger
 
 try:
-    from paddleocr import PaddleOCR
-    PADDLEOCR_AVAILABLE = True
+    import easyocr
+    EASYOCR_AVAILABLE = True
 except ImportError:
-    PADDLEOCR_AVAILABLE = False
-    logger.warning("PaddleOCR not installed. OCR will be simulated.")
+    EASYOCR_AVAILABLE = False
+    logger.warning("EasyOCR not installed. OCR will be simulated.")
 
 import config
 
@@ -28,28 +28,20 @@ _ocr_instance = None
 
 def _get_ocr():
     global _ocr_instance
-    global PADDLEOCR_AVAILABLE
+    global EASYOCR_AVAILABLE
     if _ocr_instance is None:
-        if not PADDLEOCR_AVAILABLE:
+        if not EASYOCR_AVAILABLE:
             logger.warning("OCR engine unavailable, skipping init.")
             return None
             
-        logger.info("Initialising PaddleX OCR Pipeline (CPU mode)…")
-        import os
-        
-        # Force CPU and disable the broken PaddlePaddle 3.x PIR executor that causes
-        # the 'PirAttribute2RuntimeAttribute not support' crash on Windows.
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
-        os.environ["FLAGS_enable_pir_api"] = "0"
-        
+        logger.info("Initialising EasyOCR parameters (CPU mode)…")
         try:
-            from paddlex import create_pipeline
-            # PaddleOCR 3.x / PaddleX
-            _ocr_instance = create_pipeline(pipeline="OCR")
-            logger.info("PaddleX OCR Pipeline ready.")
+            # Download models on first run, use CPU
+            _ocr_instance = easyocr.Reader(['en'], gpu=False)
+            logger.info("EasyOCR Engine ready.")
         except Exception as e:
-            logger.error(f"PaddleX Pipeline crashed upstream: {e}")
-            PADDLEOCR_AVAILABLE = False
+            logger.error(f"EasyOCR Pipeline crashed upstream: {e}")
+            EASYOCR_AVAILABLE = False
             _ocr_instance = None
     return _ocr_instance
 
@@ -66,7 +58,7 @@ def preprocess_image(img_array: np.ndarray) -> np.ndarray:
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY, 11, 2
     )
-    # Convert back to 3-channel for PaddleOCR
+    # Convert back to 3-channel for EasyOCR
     return cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
 
 
@@ -123,7 +115,7 @@ def extract_text(image: np.ndarray | Image.Image, preprocess: bool = True) -> st
     if preprocess:
         img_bgr = preprocess_image(img_bgr)
 
-    if not PADDLEOCR_AVAILABLE:
+    if not EASYOCR_AVAILABLE:
         logger.warning("Simulating OCR – returning placeholder text.")
         return "[OCR Placeholder] If a body has mass m=5 kg and acceleration a=2 m/s², what is the force?"
 
@@ -131,16 +123,14 @@ def extract_text(image: np.ndarray | Image.Image, preprocess: bool = True) -> st
     if ocr is None:
         return "[OCR Placeholder] If a body has mass m=5 kg and acceleration a=2 m/s², what is the force?"
 
-    logger.debug("Running PaddleX OCR prediction…")
+    logger.debug("Running EasyOCR prediction…")
     try:
-        results = ocr.predict(img_bgr)
+        # EasyOCR returns a list of tuples: (bounding_box, text, confidence)
+        results = ocr.readtext(img_bgr)
         lines = []
-        # PaddleX pipeline predict returns a generator of results
-        for res in results:
-            if "rec_text" in res and "rec_score" in res:
-                for text, conf in zip(res["rec_text"], res["rec_score"]):
-                    if conf > 0.5:
-                        lines.append(text.strip())
+        for bbox, text, conf in results:
+            if conf > 0.4:  # filter low-confidence noise
+                lines.append(text.strip())
     
         extracted = " ".join(lines).strip()
         logger.info(f"OCR extracted ({len(extracted)} chars): {extracted[:120]}…")
@@ -162,7 +152,7 @@ def draw_bounding_boxes(image: np.ndarray) -> np.ndarray:
     else:
         img_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-    if not PADDLEOCR_AVAILABLE:
+    if not EASYOCR_AVAILABLE:
         return image if isinstance(image, np.ndarray) else np.array(image)
 
     ocr = _get_ocr()
@@ -172,20 +162,20 @@ def draw_bounding_boxes(image: np.ndarray) -> np.ndarray:
     annotated = img_bgr.copy()
     
     try:
-        results = ocr.predict(img_bgr)
-        for res in results:
-            if "dt_polys" in res and "rec_score" in res:
-                polys = res["dt_polys"]
-                scores = res["rec_score"]
-                for poly, conf in zip(polys, scores):
-                    if conf > 0.5:
-                        box = np.array(poly, dtype=np.int32)
-                        cv2.polylines(annotated, [box], True, (0, 255, 128), 2)
-                        cv2.putText(
-                            annotated, f"{conf:.0%}",
-                            tuple(box[0]), cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5, (0, 255, 128), 1
-                        )
+        results = ocr.readtext(img_bgr)
+        for bbox, text, conf in results:
+            if conf > 0.4:
+                # EasyOCR bbox is a list of 4 points: [tl, tr, br, bl]
+                box = np.array(bbox, dtype=np.int32)
+                cv2.polylines(annotated, [box], True, (0, 255, 128), 2)
+                
+                # Use top-left point for text placement
+                tl = tuple(box[0])
+                cv2.putText(
+                    annotated, f"{conf:.0%}",
+                    tl, cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5, (0, 255, 128), 1
+                )
     except Exception as e:
         logger.error(f"Upstream OCR bounding-box crash: {e}")
 

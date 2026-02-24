@@ -28,10 +28,14 @@ class UnderstandingMeter:
     # ── Heuristic Scoring ────────────────────────────────────────────────────
 
     POSITIVE_SIGNALS = [
-        r"\b(yes|correct|exactly|right|understand|got it|i see|makes sense)\b",
-        r"\b(the formula|newton|f\s*=\s*ma|mass|acceleration|force)\b",
-        r"\b(substitute|plug in|calculate|equals|result)\b",
-        r"\d+\s*(m/s|kg|n|j|w|pa|k)",   # numeric answer with unit
+        r"\b(yes|correct|exactly|right|understand|got it|i see|makes sense|clear)\b",
+        r"\b(the formula|newton|f\s*=\s*ma|mass|acceleration|force|gravity|velocity|energy)\b",
+        r"\b(substitute|plug in|calculate|equals|result|so|therefore|because|since)\b",
+        r"\b(increase|decrease|proportional|higher|lower|impact|affect|influence)\b",
+        r"\b(first|second|then|finally|next)\b", # Process/logical words
+        r"\b(accuracy|precision|efficiency|security|performance|factors|environment)\b", # Broader topical words
+        r"\d+\s*(m/s|kg|n|j|w|pa|k|%)",   # numeric answer with unit
+        r"\d+(\.\d+)?", # Any number implies calculation
     ]
     NEGATIVE_SIGNALS = [
         r"\b(don'?t know|not sure|confused|no idea|don'?t understand|i give up)\b",
@@ -56,10 +60,8 @@ class UnderstandingMeter:
             if re.search(pattern, text)
         )
 
-        if pos_hits >= 2 and neg_hits == 0:
+        if pos_hits >= 1 and neg_hits == 0:
             return "correct", config.METER_STEP_CORRECT
-        elif pos_hits >= 1 or neg_hits == 0:
-            return "partial", config.METER_STEP_PARTIAL
         else:
             return "incorrect", config.METER_STEP_INCORRECT
 
@@ -107,6 +109,7 @@ class UnderstandingMeter:
         student_reply: str,
         concept: str = "the topic",
         use_llm: bool = False,
+        emotion: str = "neutral",
     ) -> dict:
         """
         Update the understanding score based on the student's reply.
@@ -115,6 +118,7 @@ class UnderstandingMeter:
             student_reply: Raw text of the student's answer.
             concept:       Topic / concept being evaluated (for LLM mode).
             use_llm:       If True, use the LLM for nuanced scoring.
+            emotion:       The latest detected facial expression.
 
         Returns:
             {"score": int, "delta": int, "verdict": str, "badge": str}
@@ -128,9 +132,18 @@ class UnderstandingMeter:
 
         # Update streak
         if verdict == "incorrect":
-            self.wrong_streak += 1
+            # Frustrated/angry/sad students get hints much faster
+            if emotion in ["sad", "angry", "fear"]:
+                self.wrong_streak += 2
+                delta -= 5 # Deduct more points for frustration to trigger easy mode
+            else:
+                self.wrong_streak += 1
         else:
-            self.wrong_streak = 0
+            if emotion in ["sad", "angry", "fear"] and verdict == "partial":
+                # Still struggling mentally even if answer is okay
+                self.wrong_streak += 1
+            else:
+                self.wrong_streak = 0
 
         # Clamp score to [0, 100]
         self.score = max(0, min(100, self.score + delta))
@@ -142,6 +155,7 @@ class UnderstandingMeter:
             "delta":   delta,
             "verdict": verdict,
             "badge":   badge,
+            "emotion": emotion,
         }
         self.history.append(record)
         logger.info(f"Meter update: {verdict}  delta={delta:+d}  score={self.score}  badge={badge}")

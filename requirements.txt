@@ -3,11 +3,10 @@
 streamlit>=1.32.0
 
 # OCR Engine
-paddleocr>=2.7.3
-paddlepaddle>=2.6.0   # CPU-only build
+easyocr>=1.7.1
 
-# LLM Inference (CPU-optimized quantized models)
-llama-cpp-python>=0.2.57
+# LLM Inference (Ollama REST API)
+requests>=2.31.0
 
 # Image Processing
 opencv-python>=4.9.0.80
@@ -25,3 +24,4 @@ plotly>=5.20.0
 # Utilities
 python-dotenv>=1.0.1
 loguru>=0.7.2
+pyttsx3>=2.90

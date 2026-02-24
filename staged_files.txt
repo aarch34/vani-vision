@@ -1,0 +1,13 @@
+﻿.gitignore
+README.md
+app.py
+config.py
+emotion_engine.py
+llm_engine.py
+multilingual.py
+ocr_engine.py
+requirements.txt
+setup_check.py
+socratic_prompt.py
+tts_engine.py
+understanding_meter.py

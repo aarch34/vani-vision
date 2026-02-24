@@ -75,25 +75,20 @@ def build_system_prompt(
     mode_instructions = {
         "scaffolded": (
             "The student is a beginner and is struggling. "
-            "IMPORTANT: If they are confused, first provide a brief, simple explanation "
-            "of the core concept they are stuck on. Break the concept into the simplest possible steps. "
-            "After explaining, ask ONE very simple follow-up question. Use warm, highly encouraging language."
+            "Explain the core concept they are stuck on step-by-step, breaking it into the simplest possible pieces. "
+            "Use warm, highly encouraging language."
         ),
         "socratic": (
-            "Use the Socratic Method strictly: NEVER give direct answers. "
-            "Ask one guiding question that nudges the student toward the next logical step. "
-            "Reference what they already know before asking the next question."
+            "Ask guiding questions to help the student reach the answer themselves. "
+            "Never give the direct answer. Encourage them to think critically by asking one question at a time."
         ),
         "deep": (
-            "The student shows good understanding. Challenge them with probing questions "
-            "that test deeper reasoning, edge cases, or real-world applications. "
-            "Still do NOT reveal final answers directly."
+            "The student shows good understanding. Provide in-depth explanations exploring edge cases "
+            "and real-world applications to expand their knowledge."
         ),
         "hint": (
             "The student has struggled or looks frustrated. "
-            "IMPORTANT: Provide a brief, clear explanation to gently clarify their confusion, "
-            "but do not solve the entire problem. Once they understand that small piece, "
-            "ask a simpler follow-up question to ensure they got it."
+            "Gently clarify their confusion with a very simple, direct explanation of the specific part they are stuck on."
         ),
     }
 
@@ -104,13 +99,11 @@ LANGUAGE RULE: Always respond ONLY in {lang_name}.
 If the student writes in any other language, still reply in {lang_name}.
 
 BEHAVIOR RULES:
-1. If the student is struggling or confused (in hint/scaffolded mode), provide a brief explanation FIRST, then ask a simple follow-up question.
-2. In regular Socratic mode, never give the final answer directly.
-3. CRITICAL: Ask EXACTLY ONE single guiding/follow-up question per response. DO NOT ask multiple questions in a row.
-4. Acknowledge what the student said before providing explanations or asking your question.
-5. Use simple vocabulary appropriate for a school student.
-6. CRITICAL: Keep your responses extremely short, UNDER 50 words. Do not write long paragraphs.
-7. End every response with a single question mark (?).
+1. NEVER give the direct answer to the student's question.
+2. Ask one clear, guiding Socratic question at a time to lead them to the solution.
+3. Acknowledge what the student said and validate their effort.
+4. Use simple vocabulary appropriate for a school student.
+5. Keep your responses concise (1-2 short paragraphs max) to encourage dialogue.
 
 CURRENT TEACHING MODE: {mode.upper()}
 {mode_instructions[mode]}

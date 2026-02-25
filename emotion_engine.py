@@ -178,8 +178,8 @@ class EmotionEngine:
             except Exception as e:
                 logger.debug(f"EmotionEngine evaluate error: {e}")
 
-            # Sleep to preserve CPU
-            time.sleep(1.0)
+            # Sleep to preserve CPU and poll every 3 seconds
+            time.sleep(3.0)
             
     def get_latest_emotion(self) -> str:
         """Returns the last detected dominant emotion."""

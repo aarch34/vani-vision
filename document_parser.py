@@ -5,24 +5,13 @@ document_parser.py - Extract text from PDF and Word (DOCX) files.
 import io
 from loguru import logger
 
-try:
-    import fitz  # PyMuPDF
-    PYMUPDF_AVAILABLE = True
-except ImportError:
-    PYMUPDF_AVAILABLE = False
-    logger.warning("PyMuPDF (fitz) not installed. PDF parsing will be simulated.")
-
-try:
-    import docx
-    DOCX_AVAILABLE = True
-except ImportError:
-    DOCX_AVAILABLE = False
-    logger.warning("python-docx not installed. DOCX parsing will be simulated.")
-
 def parse_pdf(file_bytes: bytes) -> str:
     """Extract text from a PDF file."""
-    if not PYMUPDF_AVAILABLE:
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
         return "[PDF parsing unavailable - Please install PyMuPDF]"
+    
     text = ""
     try:
         pdf_document = fitz.open(stream=file_bytes, filetype="pdf")
@@ -36,8 +25,11 @@ def parse_pdf(file_bytes: bytes) -> str:
 
 def parse_docx(file_bytes: bytes) -> str:
     """Extract text from a DOCX file."""
-    if not DOCX_AVAILABLE:
+    try:
+        import docx
+    except ImportError:
         return "[DOCX parsing unavailable - Please install python-docx]"
+        
     text = ""
     try:
         doc = docx.Document(io.BytesIO(file_bytes))

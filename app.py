@@ -615,7 +615,7 @@ with col_right:
             )
         else:
             # Render chat history
-            for msg in st.session_state.chat_history:
+            for i, msg in enumerate(st.session_state.chat_history):
                 if msg["role"] == "assistant":
                     st.markdown(
                         f"""
@@ -626,6 +626,15 @@ with col_right:
                         """,
                         unsafe_allow_html=True,
                     )
+                    # Add speak/stop buttons for this message
+                    btn_col1, btn_col2, _ = st.columns([1, 1, 4])
+                    with btn_col1:
+                        if st.button("🔊 Speak", key=f"speak_btn_{i}"):
+                            tts_engine.say(msg["content"])
+                    with btn_col2:
+                        if st.button("🛑 Stop", key=f"stop_btn_{i}"):
+                            tts_engine.stop()
+
                 elif msg["role"] == "user" and msg.get("display", True):
                     st.markdown(
                         f"""

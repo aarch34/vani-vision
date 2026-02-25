@@ -350,6 +350,7 @@ def init_session():
         "wrong_streak":    0,
         "session_active":  False,
         "captured_image":  None,
+        "uploaded_doc":    None,
         "current_emotion": "neutral",
     }
     for key, val in defaults.items():
@@ -438,7 +439,7 @@ with st.sidebar:
     st.markdown("---")
 
     if st.button(f"🔄 {multilingual.get_phrase('new_session', lang_code)}"):
-        for key in ["chat_history", "ocr_text", "session_active", "captured_image"]:
+        for key in ["chat_history", "ocr_text", "session_active", "captured_image", "uploaded_doc"]:
             st.session_state[key] = [] if key == "chat_history" else (
                 "" if key == "ocr_text" else (False if key == "session_active" else None)
             )
@@ -471,6 +472,50 @@ with st.sidebar:
 
 col_left, col_right = st.columns([1, 1.4], gap="large")
 
+def start_tutoring_session(text: str, lang: str, empty_warning: str):
+    if text.strip():
+        st.session_state.ocr_text   = text
+        st.session_state.subject    = socratic_prompt.detect_subject(text)
+        st.session_state.session_active = True
+        st.session_state.chat_history   = []
+        st.session_state.meter          = UnderstandingMeter()
+        llm_engine.reset_demo()
+        
+        # Start backend emotion tracker
+        emotion_bg_engine.start()
+
+        # Generate first Socratic question
+        meter = st.session_state.meter
+        sys_prompt = socratic_prompt.build_system_prompt(
+            language=lang,
+            subject=st.session_state.subject,
+            understanding_score=meter.score,
+            wrong_answer_count=meter.wrong_streak,
+            emotion=st.session_state.current_emotion,
+        )
+        intro = socratic_prompt.build_intro_message(text, lang)
+
+        with st.spinner("Vāṇī is thinking…"):
+            ai_response = llm_engine.generate(
+                system_message=sys_prompt,
+                history=[],
+                user_message=intro,
+            )
+        
+        # Start TTS and queue the first message
+        tts_engine.start()
+        tts_engine.say(ai_response)
+
+        st.session_state.chat_history.append(
+            {"role": "user", "content": intro}
+        )
+        st.session_state.chat_history.append(
+            {"role": "assistant", "content": ai_response}
+        )
+        st.rerun()
+    else:
+        st.warning(empty_warning)
+
 # ── LEFT: Camera / Upload ─────────────────────────────────────────────────────
 
 with col_left:
@@ -478,22 +523,27 @@ with col_left:
 
     input_mode = st.radio(
         "Input Mode",
-        ["📤 Upload Image", "📸 Webcam Snapshot"],
+        ["📤 Upload File", "📸 Webcam Snapshot"],
         horizontal=True,
         label_visibility="collapsed",
     )
 
     captured_img = None
 
-    if input_mode == "📤 Upload Image":
+    if input_mode == "📤 Upload File":
         uploaded = st.file_uploader(
-            multilingual.get_phrase("upload_image", lang_code),
-            type=["jpg", "jpeg", "png", "bmp", "webp"],
+            multilingual.get_phrase("upload_image", lang_code) + " or Document (PDF/DOCX)",
+            type=["jpg", "jpeg", "png", "bmp", "webp", "pdf", "docx"],
             label_visibility="collapsed",
         )
         if uploaded:
-            captured_img = Image.open(uploaded).convert("RGB")
-            st.session_state.captured_image = captured_img
+            if uploaded.name.lower().endswith((".pdf", ".docx")):
+                st.session_state.captured_image = None
+                st.session_state.uploaded_doc = uploaded
+            else:
+                captured_img = Image.open(uploaded).convert("RGB")
+                st.session_state.captured_image = captured_img
+                st.session_state.uploaded_doc = None
 
     else:
         if st.button(f"📸 {multilingual.get_phrase('capture_btn', lang_code)}"):
@@ -502,6 +552,7 @@ with col_left:
                 if frame is not None:
                     captured_img = Image.fromarray(frame)
                     st.session_state.captured_image = captured_img
+                    st.session_state.uploaded_doc = None
                     st.success("Frame captured!")
                 else:
                     st.error("Could not open webcam. Please check connection.")
@@ -516,49 +567,19 @@ with col_left:
         if st.button("🔍 Extract & Start Tutoring"):
             with st.spinner("Running OCR…"):
                 text = ocr_engine.extract_text(img, preprocess=True)
+            start_tutoring_session(text, selected_lang, "No text detected. Try a clearer image or better lighting.")
 
-            if text.strip():
-                st.session_state.ocr_text   = text
-                st.session_state.subject    = socratic_prompt.detect_subject(text)
-                st.session_state.session_active = True
-                st.session_state.chat_history   = []
-                st.session_state.meter          = UnderstandingMeter()
-                llm_engine.reset_demo()
-                
-                # Start backend emotion tracker
-                emotion_bg_engine.start()
+    # Show Document + Extract Text
+    elif st.session_state.get("uploaded_doc") is not None:
+        doc = st.session_state.uploaded_doc
+        st.info(f"📄 Document Loaded: **{doc.name}**")
 
-                # Generate first Socratic question
-                meter = st.session_state.meter
-                sys_prompt = socratic_prompt.build_system_prompt(
-                    language=selected_lang,
-                    subject=st.session_state.subject,
-                    understanding_score=meter.score,
-                    wrong_answer_count=meter.wrong_streak,
-                    emotion=st.session_state.current_emotion,
-                )
-                intro = socratic_prompt.build_intro_message(text, selected_lang)
-
-                with st.spinner("Vāṇī is thinking…"):
-                    ai_response = llm_engine.generate(
-                        system_message=sys_prompt,
-                        history=[],
-                        user_message=intro,
-                    )
-                
-                # Start TTS and queue the first message
-                tts_engine.start()
-                tts_engine.say(ai_response)
-
-                st.session_state.chat_history.append(
-                    {"role": "user", "content": intro}
-                )
-                st.session_state.chat_history.append(
-                    {"role": "assistant", "content": ai_response}
-                )
-                st.rerun()
-            else:
-                st.warning("No text detected. Try a clearer image or better lighting.")
+        if st.button("🔍 Parse & Start Tutoring"):
+            with st.spinner("Reading Document…"):
+                import document_parser
+                doc.seek(0)
+                text = document_parser.parse_document(doc.read(), doc.name)
+            start_tutoring_session(text, selected_lang, "No text detected in the document. It might be empty or image-based.")
 
     # OCR Result Box
     if st.session_state.ocr_text:

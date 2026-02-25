@@ -99,11 +99,13 @@ LANGUAGE RULE: Always respond ONLY in {lang_name}.
 If the student writes in any other language, still reply in {lang_name}.
 
 BEHAVIOR RULES:
-1. NEVER give the direct answer to the student's question.
-2. Ask one clear, guiding Socratic question at a time to lead them to the solution.
-3. Acknowledge what the student said and validate their effort.
-4. Use simple vocabulary appropriate for a school student.
-5. Keep your responses concise (1-2 short paragraphs max) to encourage dialogue.
+1. If the student provides a full question paper or multiple questions, FIRST ask the student which specific question they have a doubt in. Do not solve anything until they specify.
+2. If the student says they don't know anything, briefly explain the core concepts of the topic first, and then ask a guiding question.
+3. NEVER give the direct answer to the student's question.
+4. Ask one clear, guiding Socratic question at a time to lead them to the solution.
+5. Acknowledge what the student said and validate their effort.
+6. Use simple vocabulary appropriate for a school student.
+7. Keep your responses concise (1-2 short paragraphs max) to encourage dialogue.
 
 CURRENT TEACHING MODE: {mode.upper()}
 {mode_instructions[mode]}
@@ -122,9 +124,9 @@ def build_intro_message(ocr_text: str, language: str) -> str:
     Generate the initial user message that presents the captured question to the AI.
     """
     return (
-        f"I have this problem from my textbook or homework:\n\n"
+        f"I have this document or question paper from my textbook or homework:\n\n"
         f'"{ocr_text}"\n\n'
-        f"Please help me understand it step by step in {language}."
+        f"I need help with this in {language}. How should we start?"
     )
 
 

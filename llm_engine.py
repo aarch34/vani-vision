@@ -17,7 +17,7 @@ OLLAMA_MODEL = getattr(config, "OLLAMA_MODEL", "phi3")
 
 def _check_ollama():
     try:
-        response = requests.get("http://localhost:11434/")
+        response = requests.get("http://localhost:11434/", timeout=2)
         return response.status_code == 200
     except requests.exceptions.RequestException:
         return False

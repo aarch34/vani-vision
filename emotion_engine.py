@@ -153,11 +153,11 @@ class EmotionEngine:
                 continue
 
             try:
-                # Use enforce_detection=True to catch when the user looks away
+                # Use enforce_detection=False so it doesn't crash if the face is slightly turned
                 res = DeepFace.analyze(
                     frame,
                     actions=['emotion'],
-                    enforce_detection=True,
+                    enforce_detection=False,
                     silent=True
                 )
                 
@@ -178,8 +178,8 @@ class EmotionEngine:
             except Exception as e:
                 logger.debug(f"EmotionEngine evaluate error: {e}")
 
-            # Sleep to preserve CPU and poll every 3 seconds
-            time.sleep(3.0)
+            # Polling much faster at 1 second
+            time.sleep(1.0)
             
     def get_latest_emotion(self) -> str:
         """Returns the last detected dominant emotion."""

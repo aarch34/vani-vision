@@ -393,22 +393,26 @@ with st.sidebar:
     st.markdown("---")
 
     if st.session_state.session_active:
-        st.markdown("**Live Tracker**")
-        st.markdown(
-            '<img src="http://localhost:5050/video_feed" width="100%" style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">', 
-            unsafe_allow_html=True
-        )
-        
-        current_emotion = emotion_bg_engine.get_latest_emotion()
-        st.session_state.current_emotion = current_emotion
-        
-        EMOTION_EMOJIS = {
-            "happy": "😊", "sad": "😢", "angry": "😠", 
-            "fear": "😨", "surprise": "😲", "disgust": "🤢", "neutral": "😐",
-            "no_face": "🚫"
-        }
-        emotion_emoji = EMOTION_EMOJIS.get(current_emotion, "😐")
-        st.markdown(f"**Emotion at Last Turn**: {current_emotion.upper()} {emotion_emoji}")
+        @st.fragment(run_every="5s")
+        def render_emotion_tracker():
+            st.markdown("**Live Tracker**")
+            st.markdown(
+                '<img src="http://localhost:5050/video_feed" width="100%" style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">', 
+                unsafe_allow_html=True
+            )
+            
+            current_emotion = emotion_bg_engine.get_latest_emotion()
+            st.session_state.current_emotion = current_emotion
+            
+            EMOTION_EMOJIS = {
+                "happy": "😊", "sad": "😢", "angry": "😠", 
+                "fear": "😨", "surprise": "😲", "disgust": "🤢", "neutral": "😐",
+                "no_face": "🚫"
+            }
+            emotion_emoji = EMOTION_EMOJIS.get(current_emotion, "😐")
+            st.markdown(f"**Emotion at Last Turn**: {current_emotion.upper()} {emotion_emoji}")
+            
+        render_emotion_tracker()
 
     st.markdown("---")
 
@@ -649,63 +653,74 @@ with col_right:
     # Student Answer Input
     if st.session_state.session_active:
         st.markdown("---")
-        student_input = st.text_area(
-            multilingual.get_phrase("your_answer", lang_code),
-            placeholder="Type your answer or thinking here…",
-            height=100,
-            key=f"student_input_{meter.turn_count}",
-        )
+        def handle_submit():
+            st.session_state.submit_clicked = True
+            
+        with st.form(key=f"student_form_{meter.turn_count}", clear_on_submit=True):
+            student_input = st.text_area(
+                multilingual.get_phrase("your_answer", lang_code),
+                placeholder="Type your answer or thinking here…",
+                height=100,
+                key=f"student_input_{meter.turn_count}",
+            )
+            st.form_submit_button(
+                f"✅ {multilingual.get_phrase('submit_btn', lang_code)}",
+                on_click=handle_submit
+            )
 
-        if st.button(
-            f"✅ {multilingual.get_phrase('submit_btn', lang_code)}",
-            disabled=not student_input.strip(),
-        ):
-            user_text = student_input.strip()
-            meter     = st.session_state.meter
+        if st.session_state.get("submit_clicked", False):
+            # Reset the flag immediately
+            st.session_state.submit_clicked = False
+            
+            if not student_input.strip():
+                st.warning("⚠️ Please type an answer before submitting! If you are stuck, try typing 'I don't know' or 'Help'.")
+            else:
+                user_text = student_input.strip()
+                meter     = st.session_state.meter
 
-            # Score the response
-            result = meter.update(
+                # Score the response
+                result = meter.update(
                 student_reply=user_text,
                 concept=st.session_state.subject,
                 use_llm=False,
                 emotion=st.session_state.current_emotion,
             )
 
-            # Build next Socratic prompt
-            sys_prompt = socratic_prompt.build_system_prompt(
-                language=selected_lang,
-                subject=st.session_state.subject,
-                understanding_score=meter.score,
-                wrong_answer_count=meter.wrong_streak,
-                emotion=st.session_state.current_emotion,
-            )
-
-            with st.spinner("Vāṇī is thinking…"):
-                ai_response = llm_engine.generate(
-                    system_message=sys_prompt,
-                    history=st.session_state.chat_history,
-                    user_message=user_text,
+                # Build next Socratic prompt
+                sys_prompt = socratic_prompt.build_system_prompt(
+                    language=selected_lang,
+                    subject=st.session_state.subject,
+                    understanding_score=meter.score,
+                    wrong_answer_count=meter.wrong_streak,
+                    emotion=st.session_state.current_emotion,
                 )
-                
-            # Queue TTS voice
-            tts_engine.start()
-            tts_engine.say(ai_response)
 
-            # Display scoring feedback briefly
-            verdict_emoji = {"correct": "✅", "partial": "🔶", "incorrect": "❌"}
-            st.toast(
-                f"{result['verdict'].capitalize()} | Score: {result['score']}%",
-                icon=verdict_emoji.get(result["verdict"], "💬"),
-            )
+                with st.spinner("Vāṇī is thinking…"):
+                    ai_response = llm_engine.generate(
+                        system_message=sys_prompt,
+                        history=st.session_state.chat_history,
+                        user_message=user_text,
+                    )
+                    
+                # Queue TTS voice
+                tts_engine.start()
+                tts_engine.say(ai_response)
 
-            # Update history
-            st.session_state.chat_history.append(
-                {"role": "user", "content": user_text, "display": True}
-            )
-            st.session_state.chat_history.append(
-                {"role": "assistant", "content": ai_response}
-            )
-            st.rerun()
+                # Display scoring feedback briefly
+                verdict_emoji = {"correct": "✅", "partial": "🔶", "incorrect": "❌"}
+                st.toast(
+                    f"{result['verdict'].capitalize()} | Score: {result['score']}%",
+                    icon=verdict_emoji.get(result["verdict"], "💬"),
+                )
+
+                # Update history
+                st.session_state.chat_history.append(
+                    {"role": "user", "content": user_text, "display": True}
+                )
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": ai_response}
+                )
+                st.rerun()
 
         # Turn limit reached
         if meter.turn_count >= config.MAX_SOCRATIC_TURNS:
